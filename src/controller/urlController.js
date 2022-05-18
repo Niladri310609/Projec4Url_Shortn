@@ -1,7 +1,33 @@
 const urlModel = require('../models/urlModel')
 const validUrl = require('valid-url')
 const shortid = require('shortid')
+const isUri = require('isuri');
+const redis = require("redis");
+const { promisify } = require("util");
 
+//Connect to redis
+const redisClient = redis.createClient(
+    14096,
+  "redis-14096.c212.ap-south-1-1.ec2.cloud.redislabs.com",
+  { no_ready_check: true }
+);
+redisClient.auth("nGls5DWNutUI2jj3FLiovvuGmm8qdUs1", function (err) {
+  if (err) throw err;
+});
+
+redisClient.on("connect", async function () {
+  console.log("Connected to Redis..");
+});
+
+
+
+//1. connect to the server
+//2. use the commands :
+
+//Connection setup for redis
+
+const SET_ASYNC = promisify(redisClient.SET).bind(redisClient);
+const GET_ASYNC = promisify(redisClient.GET).bind(redisClient);
 
 //---------------------------Valiadtions-----------------------------------------//
 //request body validation
@@ -24,25 +50,41 @@ const isValidUrl = function (url) {
 const shortenUrl = async (req, res) => {
     try {
         let longUrl = req.body.longUrl
-
+     //input validation
         if (!isValidRequest(req.body)) return res.status(400).send({ status: false, message: "No input by user" })
 
         if (!isValidValue(longUrl)) return res.status(400).send({ status: false, message: "longUrl is required." })
 
+
+    //validation for Long Url
         if (!validUrl.isUri(longUrl)) return res.status(400).send({ status: false, message: "Long Url is invalid." })
         if (!isValidUrl(longUrl)) return res.status(400).send({ status: false, message: "Long Url is invalid reg." })
 
         let baseUrl = "http://localhost:3000"
-
+    // validation for base Url
         if (!validUrl.isUri(baseUrl)) return res.status(400).send({ status: false, message: `${baseUrl} is invalid base Url` })
 
+     //if the Long url is already exist
         const alreadyExistUrl = await urlModel.findOne({ longUrl })
         if (alreadyExistUrl) {
-            res.status(200).send({ status:true, "message": "Shorten link already generated previosly", data: alreadyExistUrl })
+            res.status(200).send({ status:true, "message": "Shorten link already generated previously", data: alreadyExistUrl })
         } else {
 
             let shortUrlCode = shortid.generate()
 
+            if(validUrl.isUri(longUrl)){
+                const urldata = await GET_ASYNC(`${longUrl}`)
+                if(urldata) return res.status(200).send({status:true , message: `data for  ${longUrl}from the cache`, data :JSON.parse(urldata)})
+            } else{
+                const url = await urlModel.findOne({longUrl:longUrl}).select({id:0, longUrl:1, shortUrl:1,urlCode:1})
+                if (url) {
+                    await SET_ASYNC(`${longUrl}`, JSON.stringify(url))
+                    
+                    return res.status(200).send({ status: true, msg: "fetch from db", data: url })
+                }
+            }
+            
+        //if the Urlcode is already exist
             const alreadyExistCode = await urlModel.findOne({ urlCode: shortUrlCode })
             if (alreadyExistCode) return res.status(400).send({ status: false, message: `${alreadyExistCode} is already exist` })
 
@@ -69,14 +111,23 @@ const shortenUrl = async (req, res) => {
 const getUrl = async (req, res) => {
     try {
         const urlCode = req.params.urlCode
+        let urlcache = await GET_ASYNC(`${urlCode}`)
+        if(urlcache){return res.status(302).redirect(JSON.parse(urlcache))
+        }else{
+            const UrlDb= await urlModel.findOne({urlCode:urlCode});
+         if(UrlDb){
+            await SET_ASYNC(`${urlCode}`, JSON.stringify(UrlDb.longUrl))
+            return res.status(302).redirect(UrlDb.longUrl)
+        /*}
         const urlDetails = await urlModel.findOne({ urlCode })
 
         if (urlDetails) {
-            return res.status(302).redirect(urlDetails.longUrl)
+            return res.status(302).redirect(urlDetails.longUrl)*/
         }
         else {
             return res.status(404).send({ status: false, msg: "No URL Found" });
         }
+    }
 
     } catch (err) {
         return res.status(500).send({ status: false, message: err.message })
