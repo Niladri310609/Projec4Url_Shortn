@@ -83,7 +83,7 @@ const shortenUrl = async (req, res) => {
             return res.status(200).send({ status: true, message: "Shorten link already generated previously", data: alreadyExistUrl })
         } else {
 
-            let shortUrlCode = shortId.generate()
+            let shortUrlCode = shortid.generate()
 
             //if the Urlcode is already exist
             const alreadyExistCode = await urlModel.findOne({ urlCode: shortUrlCode })
