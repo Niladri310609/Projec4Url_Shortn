@@ -85,7 +85,7 @@ const shortenUrl = async (req, res) => {
 
             let shortUrlCode = shortid.generate()
 
-            //if the Urlcode is already exist
+            //if the Urlcode is already existm( rare purpouse)
             const alreadyExistCode = await urlModel.findOne({ urlCode: shortUrlCode })
             if (alreadyExistCode) return res.status(400).send({ status: false, message: "It seems You Have To Hit The Api Again" })
 
